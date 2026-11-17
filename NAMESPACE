@@ -1,0 +1,5 @@
+useDynLib(landisR.succession.biomass, .registration = TRUE)
+importFrom(Rcpp, evalCpp)
+importFrom(stats, aggregate, runif, setNames)
+importFrom(utils, head, tail, type.convert)
+export(landis_biomass_backend)
