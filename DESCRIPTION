@@ -1,20 +1,20 @@
 Package: landisR.succession.biomass
 Type: Package
 Title: LANDIS Living Biomass Succession for landisR
-Version: 0.1.0.9006
+Version: 0.1.0.9008
 Authors@R: person("Yan", "Boulanger", email = "landisR-maintainer@example.invalid", role = c("aut", "cre"))
 Description: Provides living biomass growth, mortality, Ward dispersal, recruitment, initial communities and post-fire regeneration for landisR. Includes LANDIS-II
                   input adapters and the production simulation engine.
 License: file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.3.0)
-Imports: landisR (>= 0.1.0.9015), Rcpp
-LinkingTo: landisR (>= 0.1.0.9015), Rcpp
+Imports: landisR (>= 0.1.0.9017), Rcpp
+LinkingTo: landisR (>= 0.1.0.9017), Rcpp
 Suggests: terra, testthat (>= 3.0.0)
 Config/testthat/edition: 3
 NeedsCompilation: yes
 Collate: 'biomass52.R' 'explicit_initial52.R' 'spinup52.R' 'fast52.R' 'rcpp52.R' 'simulation52.R' 'ward52.R' 'canonical52.R' 'climate52.R' 'production52.R'
-                  'read_landis52.R' 'import_landis52.R' 'large52.R' 'ward531.R' 'establishment.R' 'serotiny_api.R' 'serotiny_csr.R' 'biomass_step.R' 'backend.R'
+                  'read_landis52.R' 'import_landis52.R' 'biomass_succession_read.R' 'large52.R' 'ward531.R' 'establishment.R' 'serotiny_api.R' 'serotiny_csr.R' 'biomass_step.R' 'backend.R'
                   'RcppExports.R' 'zzz_package_runtime.R'
 Author: Yan Boulanger [aut, cre]
 Maintainer: Yan Boulanger <landisR-maintainer@example.invalid>

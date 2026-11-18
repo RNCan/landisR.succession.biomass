@@ -10,7 +10,7 @@ recruitment for biomass projects.
 \details{
 The \pkg{landisR} core owns the shared forest state and simulation clock.
 Build or import a biomass project with \code{landisR::landis_build()} or
-\code{landisR::landis_read()}. Run it with \code{landisR::landis_sim()}
+\code{biomass_succession_read()}, then combine them with \code{landisR::landis_initialize()}. Run the initialized simulation with \code{landisR::landis_sim()}
 or \code{landisR::landis_run()}. The core loads the biomass engine
 and calls its provider automatically.
 }

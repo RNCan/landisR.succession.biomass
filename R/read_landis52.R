@@ -35,40 +35,23 @@ bs52_table <- function(lines, columns) {
   for (nm in names(out)) out[[nm]] <- type.convert(out[[nm]], as.is = TRUE)
   out
 }
-bs52_read_mauricie <- function(directory, scenario = "scenario.txt") {
-  root <- normalizePath(directory, winslash = "/", mustWork = TRUE)
+bs52_read_mauricie <- function(scenario_file, prefer_cells_csv) {
+  root <- dirname(scenario_file)
   path <- function(x) {
-    p <- file.path(root, x)
-    if (!file.exists(p)) stop("Missing input: ", p)
-    p
+    p <- chartr("\\", "/", x)
+    if (!grepl("^(/|[A-Za-z]:/)", p)) p <- file.path(root, p)
+    if (!file.exists(p)) stop("Missing Biomass Succession input: ", p)
+    normalizePath(p, winslash = "/", mustWork = TRUE)
   }
-  sc <- bs52_lines(path(scenario))
-  if (!grepl('^LandisData +"?Scenario"?$', sc[1])) stop("Not a Scenario file")
-  rows <- lapply(sc, bs52_tokens)
-  ext <- Filter(function(x) length(x) == 2 && x[1] %in%
-    c("Biomass Succession", "Base Fire", "Base Wind", "Base BDA",
-      "Output Biomass", "Output Cohort Statistics"), rows)
-  ext <- bs52_table(vapply(ext, function(x) paste(sprintf('"%s"', x),
-                                collapse = " "), ""), c("extension", "file"))
-  bi <- ext$file[ext$extension == "Biomass Succession"]
-  if (length(bi) != 1L) stop("One Biomass Succession entry required")
-  main <- bs52_lines(path(bi))
-  species <- bs52_table(bs52_lines(path(bs52_value(sc, "Species")))[-1],
-    c("species", "longevity", "maturity", "shade_tolerance", "fire_tolerance",
-      "effective_seed_distance", "max_seed_distance", "vegetative_probability",
-      "min_sprout_age", "max_sprout_age", "post_fire_regeneration"))
-  species$species <- as.character(species$species)
-  species <- landisR_normalize_serotiny_traits(species)
-  eco <- bs52_table(bs52_lines(path(bs52_value(sc, "Ecoregions")))[-1],
-                   c("active", "map_code", "ecoregion", "description"))
+  sc <- bs52_lines(scenario_file)
+  main <- bs52_lines(path(bs52_value(sc, "Biomass Succession")))
   sp <- bs52_table(bs52_section(main, "SpeciesParameters", "EcoregionParameters"),
     c("species", "leaf_longevity", "woody_decay", "mortality_shape",
       "growth_shape", "leaf_lignin"))
   dy <- bs52_table(bs52_lines(path(bs52_value(main, "DynamicInputFile")))[-1],
     c("year", "ecoregion", "species", "sep", "max_anpp", "max_biomass"))
-  if (anyDuplicated(species$species) || anyDuplicated(sp$species) ||
-      any(!species$species %in% sp$species) ||
-      any(!dy$species %in% species$species) ||
+  if (anyDuplicated(sp$species) ||
+      any(!dy$species %in% sp$species) ||
       anyDuplicated(dy[c("year", "ecoregion", "species")]))
     stop("Duplicate or unmatched species/dynamic keys")
   initial_file <- bs52_value(main, "InitialCommunities")
@@ -81,7 +64,7 @@ bs52_read_mauricie <- function(directory, scenario = "scenario.txt") {
     if (t[1] == "MapCode") {
       code <- as.numeric(t[2]); community_codes <- c(community_codes, code)
     } else {
-      if (is.null(code) || !t[1] %in% species$species || length(t) < 2)
+      if (is.null(code) || !t[1] %in% sp$species || length(t) < 2)
         stop("Invalid initial-community row")
       age_tokens <- bs52_tokens(gsub("\\([^)]*\\)", "", line))[-1]
       ages <- suppressWarnings(as.numeric(age_tokens))
@@ -110,21 +93,31 @@ bs52_read_mauricie <- function(directory, scenario = "scenario.txt") {
       any(fire$wood_reduction < 0 | fire$wood_reduction > 1) ||
       any(fire$litter_reduction < 0 | fire$litter_reduction > 1))
     stop("Invalid FireReductionParameters")
-  list(root = root, duration = as.numeric(bs52_value(sc, "Duration")),
-       cell_length = as.numeric(bs52_value(sc, "CellLength")),
-       timestep = as.numeric(bs52_value(main, "Timestep")),
+  cells_path <- file.path(root, "cells.csv")
+  community_by_cell <- NULL
+  initial_map <- NULL
+  if (isTRUE(prefer_cells_csv) && file.exists(cells_path)) {
+    header <- utils::read.csv(cells_path, nrows = 0L)
+    columns <- c("cell_id", "community")
+    if (!all(columns %in% names(header)))
+      stop("cells.csv must include cell_id and community for Biomass Succession.", call. = FALSE)
+    community_by_cell <- utils::read.csv(
+      cells_path, colClasses = ifelse(names(header) %in% columns, NA_character_, "NULL")
+    )
+  } else {
+    initial_map <- bs52_import_landis_matrix(path(bs52_value(main, "InitialCommunitiesMap")))
+  }
+
+  list(timestep = as.numeric(bs52_value(main, "Timestep")),
        spinup_cohorts = isTRUE(tolower(bs52_value(main, "SpinupCohorts", required = FALSE)) %in% c("yes", "true")),
        seeding = bs52_value(main, "SeedingAlgorithm"),
        spinup_mortality = as.numeric(bs52_value(main, "SpinupMortalityFraction")),
-       extensions = ext, species = species, species_parameters = sp,
-       ecoregions = eco, ecoregion_parameters = bs52_table(
+       species_parameters = sp, ecoregion_parameters = bs52_table(
          bs52_section(main, "EcoregionParameters", "DynamicInputFile"),
          c("ecoregion", "aet")), dynamic = dy, initial_cohorts = cohorts,
        community_codes = community_codes, shade = shade, light = light,
        fire_reductions = fire,
-       ecoregions_map = path(bs52_value(sc, "EcoregionsMap")),
-       initial_map = path(bs52_value(main, "InitialCommunitiesMap")),
-       main_file = bi,
+       initial_map = initial_map, community_by_cell = community_by_cell,
        explicit_initial = if (any(grepl("\\(", initial)))
-         bs52_read_explicit_initial_communities(path(initial_file), species$species) else NULL)
+         bs52_read_explicit_initial_communities(path(initial_file), sp$species) else NULL)
 }

@@ -1,3 +1,7 @@
+# landisR.succession.biomass 0.1.0.9008
+
+- Read the LANDIS-II Biomass Succession configuration independently of the landscape.
+
 # landisR.succession.biomass 0.1.0.9005
 
 - Report growth, regeneration and output writing in the console progress bar

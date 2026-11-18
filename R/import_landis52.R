@@ -7,7 +7,7 @@ bs52_import_active <- function(ecoregions) {
   tolower(as.character(ecoregions$active)) %in% c("yes", "true", "active")
 }
 
-bs52_import_validate_grid <- function(grid, config) {
+bs52_import_validate_grid <- function(grid, ecoregions, community_codes) {
   required <- c("cell_id", "row", "col", "ecoregion_map_code",
                 "ecoregion", "active", "community")
   if (!identical(names(grid), required) || !nrow(grid))
@@ -17,52 +17,23 @@ bs52_import_validate_grid <- function(grid, config) {
       !identical(grid$cell_id, seq_len(nr * nc)) ||
       any(grid$cell_id != grid$row + (grid$col - 1L) * nr))
     bs52_import_stop("La grille ne respecte pas l'ordre LANDIS colonne-major.")
-  key <- as.character(config$ecoregions$map_code)
+  key <- as.character(ecoregions$map_code)
   i <- match(as.character(grid$ecoregion_map_code), key)
   if (anyNA(i) || any(as.character(grid$ecoregion) !=
-                       as.character(config$ecoregions$ecoregion[i])) ||
-      any(grid$active != bs52_import_active(config$ecoregions)[i]))
+                       as.character(ecoregions$ecoregion[i])) ||
+      any(grid$active != bs52_import_active(ecoregions)[i]))
     bs52_import_stop("La grille est incompatible avec le fichier d'ecoregions.")
-  if (any(grid$active & !grid$community %in% config$community_codes) ||
+  if (any(grid$active & !grid$community %in% community_codes) ||
       any(!grid$active & grid$community != 0L))
     bs52_import_stop("Les communautes initiales sont incompatibles avec la grille.")
   grid
 }
 
-bs52_import_grid_from_cells <- function(cells, config) {
-  required <- c("cell_id", "row", "col", "ecoregion", "community")
-  if (!identical(names(cells), required))
-    bs52_import_stop("cells.csv doit contenir exactement : ",
-                     paste(required, collapse = ", "))
-  # cells.csv may hold either LANDIS ecoregion labels (for example "216")
-  # or the numeric map codes.  The latter is required for inactive cells:
-  # map code 0 corresponds to the label "none" in landtypes.
-  i <- match(as.character(cells$ecoregion),
-             as.character(config$ecoregions$ecoregion))
-  unmatched <- is.na(i)
-  if (any(unmatched)) {
-    i[unmatched] <- match(as.character(cells$ecoregion[unmatched]),
-                          as.character(config$ecoregions$map_code))
-  }
-  if (anyNA(i))
-    bs52_import_stop("cells.csv contient une ecoregion ou un code absent de landtypes.")
-  grid <- data.frame(
-    cell_id = as.integer(cells$cell_id), row = as.integer(cells$row),
-    col = as.integer(cells$col),
-    ecoregion_map_code = as.integer(config$ecoregions$map_code[i]),
-    ecoregion = as.character(config$ecoregions$ecoregion[i]),
-    active = as.logical(bs52_import_active(config$ecoregions)[i]),
-    community = as.integer(cells$community), stringsAsFactors = FALSE
-  )
-  bs52_import_validate_grid(grid, config)
-}
-
-bs52_import_landis_matrix <- function(path, nr = NULL, nc = NULL) {
+bs52_import_landis_matrix <- function(path) {
   if (!requireNamespace("terra", quietly = TRUE))
     bs52_import_stop("Importer les cartes LANDIS requiert terra : install.packages('terra').")
   r <- terra::rast(path)
-  if (terra::nlyr(r) != 1L || (!is.null(nr) &&
-      (terra::nrow(r) != nr || terra::ncol(r) != nc)))
+  if (terra::nlyr(r) != 1L)
     bs52_import_stop("Dimensions raster LANDIS incompatibles : ", path)
   raw <- terra::values(r, mat = FALSE)
   # terra::values() reads the first raster row first.  This is already the
@@ -70,29 +41,6 @@ bs52_import_landis_matrix <- function(path, nr = NULL, nc = NULL) {
   # Do not reverse Y here: plotting an unreferenced LANDIS raster can look
   # mirrored, but reversing the stored values changes the landscape itself.
   matrix(raw, nrow = terra::nrow(r), ncol = terra::ncol(r), byrow = TRUE)
-}
-
-bs52_import_grid_from_maps <- function(config) {
-  eco <- bs52_import_landis_matrix(config$ecoregions_map)
-  community <- bs52_import_landis_matrix(config$initial_map, nrow(eco), ncol(eco))
-  if (anyNA(eco) || anyNA(community) || any(!is.finite(eco)) ||
-      any(!is.finite(community)) || any(eco != trunc(eco)) ||
-      any(community != trunc(community)))
-    bs52_import_stop("Les cartes LANDIS doivent contenir seulement des codes entiers finis.")
-  code <- as.integer(as.vector(eco))
-  i <- match(as.character(code), as.character(config$ecoregions$map_code))
-  if (anyNA(i))
-    bs52_import_stop("La carte d'ecoregions contient un code absent de landtypes.")
-  nr <- nrow(eco); nc <- ncol(eco)
-  position <- expand.grid(row = seq_len(nr), col = seq_len(nc))
-  grid <- data.frame(
-    cell_id = seq_len(nr * nc), row = as.integer(position$row),
-    col = as.integer(position$col), ecoregion_map_code = code,
-    ecoregion = as.character(config$ecoregions$ecoregion[i]),
-    active = as.logical(bs52_import_active(config$ecoregions)[i]),
-    community = as.integer(as.vector(community)), stringsAsFactors = FALSE
-  )
-  bs52_import_validate_grid(grid, config)
 }
 
 bs52_import_source_fingerprint <- function(root) {
@@ -110,31 +58,80 @@ bs52_import_write_csv <- function(x, path) {
   utils::write.csv(x, path, row.names = FALSE, na = "", fileEncoding = "UTF-8")
 }
 
+bs52_assemble_landis_inputs <- function(project, config) {
+  common <- project$canonical
+  species <- common$species$species
+  if (!all(species %in% config$species_parameters$species) ||
+      !all(config$dynamic$species %in% species) ||
+      !all(config$initial_cohorts$species %in% species))
+    bs52_import_stop("The Biomass Succession species must match the landscape species catalog.")
+  columns <- c("cell_id", "row", "col", "ecoregion_map_code", "ecoregion", "active")
+  if (!all(columns %in% names(common$landscape$cells)))
+    bs52_import_stop("Biomass Succession requires ecoregion_map_code in the landscape cells.")
+  grid <- common$landscape$cells[columns]
+  if (is.null(common$ecoregions)) {
+    common$ecoregions <- unique(grid[c("ecoregion_map_code", "ecoregion", "active")])
+    names(common$ecoregions)[1L] <- "map_code"
+  }
+  community_codes <- as.integer(config$community_codes)
+  if (!is.null(config$initial_map)) {
+    if (!identical(dim(config$initial_map), c(common$landscape$nrow, common$landscape$ncol)))
+      bs52_import_stop("The initial communities map must match the landscape dimensions.")
+    community <- as.vector(config$initial_map)
+  } else {
+    cells <- config$community_by_cell
+    if (anyDuplicated(cells$cell_id) || !setequal(cells$cell_id, grid$cell_id))
+      bs52_import_stop("The initial communities in cells.csv must match the landscape cell IDs.")
+    community <- cells$community[match(grid$cell_id, cells$cell_id)]
+  }
+  if (!is.numeric(community) || any(!is.finite(community) | community != trunc(community) |
+                                    community < 0 | community > .Machine$integer.max))
+    bs52_import_stop("Initial communities must have finite, nonnegative integer codes.")
+  grid$community <- as.integer(community)
+  grid <- bs52_import_validate_grid(grid, common$ecoregions, community_codes)
+  explicit <- !is.null(config$explicit_initial)
+  cohorts <- if (explicit) config$explicit_initial$cohorts else config$initial_cohorts
+  # The imported ages and codes are integral, as in the equivalent canonical CSV.
+  cohorts$age <- as.integer(cohorts$age)
+  cohorts$map_code <- as.integer(cohorts$map_code)
+  assembled <- landisR::landis_build(
+    landscape = grid,
+    species = common$species, species_parameters = config$species_parameters,
+    ecoregions = common$ecoregions, ecoregion_parameters = config$ecoregion_parameters,
+    dynamic = config$dynamic, initial_cohorts = cohorts,
+    shade = config$shade, light = config$light, fire_reductions = config$fire_reductions,
+    duration = common$duration, cell_length = common$cell_length,
+    timestep = config$timestep, seeding_algorithm = config$seeding,
+    spinup_cohorts = config$spinup_cohorts, spinup_mortality_fraction = config$spinup_mortality,
+    initial_mode = if (explicit) "explicit_biomass" else "age_spinup",
+    community_codes = community_codes, name = project$name
+  )
+  assembled$source_type <- "LANDIS-II"
+  assembled$source <- list(landscape = project$source, succession = config$scenario_file)
+  assembled
+}
+
 bs52_import_landis_to_r <- function(source_directory = "inputs",
                                     destination = "inputs_R/landis_import",
                                     scenario = "scenario.txt",
                                     prefer_cells_csv = TRUE) {
-  source_directory <- normalizePath(source_directory, winslash = "/", mustWork = TRUE)
+  landscape <- landisR::landis_read(source_directory, scenario,
+                                     prefer_cells_csv = prefer_cells_csv)
+  succession <- biomass_succession_read(source_directory, scenario, prefer_cells_csv)
+  project <- bs52_assemble_landis_inputs(landscape, succession)
+  config <- project$canonical
+  grid <- config$landscape$cells
+  source_directory <- landscape$source$directory
   destination <- normalizePath(destination, winslash = "/", mustWork = FALSE)
   if (dir.exists(destination) && length(list.files(destination, all.files = TRUE,
                                                     no.. = TRUE)))
     bs52_import_stop("Le dossier destination existe deja et n'est pas vide : ",
                      destination, ".")
-  dir.create(destination, recursive = TRUE, showWarnings = FALSE)
-
-  config <- bs52_read_mauricie(source_directory, scenario)
-  cells_path <- file.path(source_directory, "cells.csv")
-  grid <- if (prefer_cells_csv && file.exists(cells_path)) {
-    bs52_import_grid_from_cells(utils::read.csv(cells_path,
-                                                stringsAsFactors = FALSE), config)
-  } else bs52_import_grid_from_maps(config)
-
   initial_mode <- if (is.null(config$explicit_initial)) "age_spinup" else "explicit_biomass"
   initial_cohorts <- if (identical(initial_mode, "explicit_biomass")) {
     config$explicit_initial$cohorts
   } else transform(config$initial_cohorts, biomass = NA_real_)
-  community_codes <- data.frame(map_code = as.integer(config$community_codes),
-                                stringsAsFactors = FALSE)
+  community_codes <- data.frame(map_code = config$community_codes)
 
   for (folder in c("landscape", "ecology", "succession", "initial", "provenance"))
     dir.create(file.path(destination, folder), recursive = TRUE, showWarnings = FALSE)
@@ -174,7 +171,7 @@ bs52_import_landis_to_r <- function(source_directory = "inputs",
   manifest <- list(
     format = "landisR52/canonical-inputs-v1", imported_at = Sys.time(),
     source_directory = source_directory, source_scenario = scenario,
-    import_grid = if (prefer_cells_csv && file.exists(cells_path)) "cells_csv" else "landis_maps",
+    import_grid = if (is.null(succession$community_by_cell)) "landis_maps" else "cells_csv",
     source_fingerprint = source_fingerprint
   )
   saveRDS(manifest, file.path(destination, "provenance", "import_manifest.rds"),
