@@ -1,5 +1,6 @@
 #include <Rcpp.h>
 #include <landisR/csr_store.hpp>
+#include <landisR/progress.hpp>
 #include <numeric>
 #include <algorithm>
 #include <cmath>
@@ -3842,6 +3843,8 @@ List bs52_grow_csr_indexed_features_cpp(
   );
   IntegerVector shade_class(n_states);
 
+  landis_progress::Reporter progress;
+  progress.start(0, 1, "Growth & stand features", n_states);
   int progress_percent = -1;
 
   bs52_progress_update(
@@ -4094,6 +4097,7 @@ List bs52_grow_csr_indexed_features_cpp(
         out_species.size()
       );
 
+    progress.advance(s + 1);
     bs52_progress_update(
       progress_label,
       s + 1,
@@ -4236,6 +4240,8 @@ List bs52_rebuild_csr_cpp(
   int n_recruited_cells =
     0;
 
+  landis_progress::Reporter progress;
+  progress.start(0, 0.70, "Indexing regenerated cells", n_sites);
   int progress_percent =
     -1;
 
@@ -4339,6 +4345,7 @@ List bs52_rebuild_csr_cpp(
     next_cell_state[k] =
       next_id + 1;
 
+    progress.advance(k + 1);
     bs52_progress_update(
       progress_label,
       k + 1,
@@ -4366,9 +4373,9 @@ List bs52_rebuild_csr_cpp(
   std::size_t total_cohorts =
     0;
 
-  for (int u = 0;
-       u < n_unique;
-       ++u) {
+  progress.start(0.70, 1, "Rebuilding cohorts (CSR)", n_unique);
+  for (int u = 0; u < n_unique; ++u) {
+    progress.advance(u);
 
     const int old_state =
       unique_old_state[
@@ -4596,8 +4603,11 @@ NumericMatrix bs52_ward_probability_fused_bitset_cpp(
     n_species
   );
 
+  landis_progress::Reporter progress;
+  progress.phase(0, "Preparing seed sources");
   // Local-only dispersal does not need a spatial source grid.
   if (local_only) {
+    progress.start(0.12, 1, "Local seed dispersal", n_species);
     int progress_percent = -1;
 
     bs52_progress_update(
@@ -4636,6 +4646,7 @@ NumericMatrix bs52_ward_probability_fused_bitset_cpp(
           );
       }
 
+      progress.advance(j + 1);
       bs52_progress_update(
         progress_label,
         j + 1,
@@ -4746,6 +4757,7 @@ NumericMatrix bs52_ward_probability_fused_bitset_cpp(
     }
   }
 
+  progress.start(0.12, 1, "Ward seed dispersal", n_species);
   int progress_percent = -1;
 
   bs52_progress_update(
@@ -4891,6 +4903,7 @@ NumericMatrix bs52_ward_probability_fused_bitset_cpp(
           );
       }
 
+      progress.advance(j + 1);
       bs52_progress_update(
         progress_label,
         j + 1,
@@ -4929,6 +4942,7 @@ NumericMatrix bs52_ward_probability_fused_bitset_cpp(
           );
       }
 
+      progress.advance(j + 1);
       bs52_progress_update(
         progress_label,
         j + 1,
@@ -5152,6 +5166,7 @@ NumericMatrix bs52_ward_probability_fused_bitset_cpp(
         );
     }
 
+    progress.advance(j + 1);
     bs52_progress_update(
       progress_label,
       j + 1,

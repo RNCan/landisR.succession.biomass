@@ -34,7 +34,7 @@ bs52_large_progress_enabled52 <- function() {
   isTRUE(
     getOption(
       "landisR52.progress",
-      TRUE
+      FALSE
     )
   )
 }
@@ -797,7 +797,7 @@ bs52_large_grow_states52 <- function(states, state_eco, block_years,
                                      engine = c("Rcpp", "R"),
                                      progress = bs52_large_progress_enabled52(),
                                      progress_label = "Croissance CSR + features",
-                                     feature_year = tail(block_years, 1L)) {
+                                     feature_year = tail(block_years, 1L), report = NULL) {
   engine <- match.arg(engine)
 
   if (!identical(engine, "Rcpp")) {
@@ -820,7 +820,7 @@ bs52_large_grow_states52 <- function(states, state_eco, block_years,
     state_eco
   )
 
-  out <- bs52_grow_csr_indexed_features_cpp(
+  out <- landisR::landis_progress_native(report, 0.05, 0.34, bs52_grow_csr_indexed_features_cpp(
     states,
     as.integer(state_eco),
     params_by_eco,
@@ -837,7 +837,7 @@ bs52_large_grow_states52 <- function(states, state_eco, block_years,
     spinup = FALSE,
     show_progress = progress,
     progress_label = progress_label
-  )
+  ))
 
   base_probability <- out$base_probability
 
@@ -1143,7 +1143,7 @@ bs52_large_state_features52 <- function(states, state_eco, config, year,
 
 bs52_large_masks_from_probability52 <- function(probability,
                                                 stochastic = TRUE,
-                                                chunk_cells = 100000L) {
+                                                chunk_cells = 100000L, report = NULL) {
   if (!is.matrix(probability) || !is.numeric(probability)) {
     bs52_large_stop("Matrice de probabilite invalide.")
   }
@@ -1181,6 +1181,8 @@ bs52_large_masks_from_probability52 <- function(probability,
   )
 
   for (start in starts) {
+    if (!is.null(report))
+      report(0.64 + 0.07 * (start - 1) / n_sites, "Recruitment draws")
     end <- min(
       n_sites,
       start + chunk_cells - 1L
@@ -1277,7 +1279,7 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
                                  precomputed_ecology = NULL,
                                  establishment = NULL,
                                  landis_rng = NULL,
-                                 deferred = FALSE, pending_regeneration = NULL) {
+                                 deferred = FALSE, pending_regeneration = NULL, report = NULL) {
   variant <- match.arg(variant)
   mode <- match.arg(mode)
 
@@ -1306,6 +1308,7 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
   feature_seconds <- 0
 
   ward_start <- proc.time()[["elapsed"]]
+  if (!is.null(report)) report(0.35, "Preparing regeneration")
 
   if (is.null(landis_rng)) {
     ward_table <- ctx$ward_tables[[variant]]
@@ -1318,7 +1321,8 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
       )
     }
 
-    probability <- bs52_ward_probability_fused_bitset_cpp(
+    probability <- landisR::landis_progress_native(report, 0.39, 0.63,
+      bs52_ward_probability_fused_bitset_cpp(
       features$mature,
       as.integer(cell_state),
       ctx$targets,
@@ -1343,7 +1347,7 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
         year,
         " - Ward bitset"
       )
-    )
+    ))
 
     ward_seconds <- bs52_large_elapsed(
       ward_start
@@ -1354,7 +1358,7 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
     recruit_mask <- bs52_large_masks_from_probability52(
       probability,
       stochastic = stochastic,
-      chunk_cells = rng_chunk_cells
+      chunk_cells = rng_chunk_cells, report = report
     )
 
     if (!is.null(establishment)) {
@@ -1368,8 +1372,9 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
 
     rm(probability)
   } else {
-    draw <- bs52_ward531_recruit(features, ecology, ctx, cell_state, state_eco,
-                                establishment, landis_rng, deferred, pending_regeneration)
+    draw <- landisR::landis_progress_native(report, 0.39, 0.72,
+      bs52_ward531_recruit(features, ecology, ctx, cell_state, state_eco,
+                           establishment, landis_rng, deferred, pending_regeneration))
     recruit_mask <- draw$mask
     landis_rng <- list(state = draw$rng_state, offset = draw$rng_offset)
     ward_seconds <- bs52_large_elapsed(ward_start)
@@ -1380,7 +1385,7 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
 
   rebuild_start <- proc.time()[["elapsed"]]
 
-  rebuilt <- bs52_rebuild_csr_cpp(
+  rebuilt <- landisR::landis_progress_native(report, 0.73, 0.91, bs52_rebuild_csr_cpp(
     states,
     as.integer(state_eco),
     as.integer(cell_state),
@@ -1395,7 +1400,7 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
       year,
       " - rebuild CSR"
     )
-  )
+  ))
 
   rebuild_seconds <- bs52_large_elapsed(rebuild_start)
 
@@ -1581,7 +1586,8 @@ bs52_run_large_landscape52 <- function(
     ),
     establishment = NULL,
     landis_rng = NULL,
-    deferred = FALSE, pending_regeneration = NULL) {
+    deferred = FALSE, pending_regeneration = NULL,
+    report_progress = NULL, detailed_progress = FALSE) {
 
   engine <- match.arg(engine)
   dispersal <- match.arg(dispersal)
@@ -1736,7 +1742,7 @@ bs52_run_large_landscape52 <- function(
       .GlobalEnv
     )
 
-    message(
+    if (!is.null(output_directory) && is.null(report_progress)) message(
       "Reprise depuis le checkpoint de l'annee ",
       start_year,
       "."
@@ -1812,11 +1818,13 @@ bs52_run_large_landscape52 <- function(
     integer()
   }
 
+  report <- getOption("landisR.progress.report")
+  if (!is.null(report_progress))
+    report <- function(fraction, label) report_progress(end_year, fraction, label)
   for (end_year in next_years) {
     n_states_before <- .biomass_core$services$n_states(states)
-    progress <- bs52_large_progress_enabled52()
 
-    if (progress) {
+    if (detailed_progress) {
       message("")
       message(
         "------------------------------------------------------------"
@@ -1835,6 +1843,7 @@ bs52_run_large_landscape52 <- function(
       )
     }
 
+    if (!is.null(report)) report(0.01, "Preparing growth")
     growth_start <- proc.time()[["elapsed"]]
 
     block_years <- seq.int(
@@ -1849,13 +1858,13 @@ bs52_run_large_landscape52 <- function(
       params,
       ctx,
       engine = engine,
-      progress = progress,
+      progress = detailed_progress,
       progress_label = paste0(
         "Annee ",
         end_year,
         " - croissance + features"
       ),
-      feature_year = end_year
+      feature_year = end_year, report = report
     )
 
     states <- growth_bundle$states
@@ -1874,13 +1883,13 @@ bs52_run_large_landscape52 <- function(
       mode = dispersal,
       stochastic = TRUE,
       rng_chunk_cells = rng_chunk_cells,
-      progress = progress,
+      progress = detailed_progress,
       precomputed_features = growth_bundle$features,
       precomputed_ecology = growth_bundle$ecology,
       establishment = establishment,
       landis_rng = landis_rng,
       deferred = deferred,
-      pending_regeneration = pending_regeneration
+      pending_regeneration = pending_regeneration, report = report
     )
 
     pending_regeneration <- NULL
@@ -1889,6 +1898,10 @@ bs52_run_large_landscape52 <- function(
     state_eco <- recruited$state_eco
     cell_state <- recruited$cell_state
 
+    if (!is.null(report) &&
+        (end_year %in% years ||
+         (!is.null(output_directory) && end_year %% checkpoint_every == 0L)))
+      report(0.94, "Saving forest state")
     snapshot_seconds <- 0
 
     if (end_year %in% years) {
@@ -1950,7 +1963,7 @@ bs52_run_large_landscape52 <- function(
         recruited$n_recruited_cells
       )
 
-    message(
+    if (detailed_progress) message(
       "Large52 / annee ",
       end_year,
       " / ",
@@ -2137,6 +2150,17 @@ bs52_run_large_production52 <- function(scenario) {
     )
   }
 
+  progress <- scenario[["progress"]]
+  if (is.null(progress)) progress <- getOption("landisR.progress", interactive())
+  detailed_progress <- isTRUE(progress) && bs52_large_progress_enabled52()
+  bar <- .biomass_core$services$progress_bar(progress && !detailed_progress,
+                                            "Biomass Succession")
+  if (!is.null(bar)) {
+    on.exit(bar$close(), add = TRUE)
+    bar$update(0, "Preparing inputs")
+  }
+  read_inputs <- if (is.null(bar)) force else suppressMessages
+
   if (is.null(
         scenario$snapshot_compression
       )) {
@@ -2232,10 +2256,10 @@ bs52_run_large_production52 <- function(scenario) {
     scenario$inputs
   )
 
-  canonical <- bs52_large_read_canonical_cached52(
+  canonical <- read_inputs(bs52_large_read_canonical_cached52(
     scenario$inputs,
     cache_file
-  )
+  ))
 
   load_seconds <- bs52_large_elapsed(load_start)
 
@@ -2267,13 +2291,13 @@ bs52_run_large_production52 <- function(scenario) {
 
   context_start <- proc.time()[["elapsed"]]
 
-  ctx <- bs52_large_read_context_cached52(
+  ctx <- read_inputs(bs52_large_read_context_cached52(
     canonical = canonical,
     inputs = scenario$inputs,
     inputs_signature = inputs_signature,
     climate = scenario$climate,
     cache_file = context_cache_file
-  )
+  ))
 
   context_seconds <- bs52_large_elapsed(
     context_start
@@ -2307,10 +2331,11 @@ bs52_run_large_production52 <- function(scenario) {
     )
 
     if (bs52_compatible_run_signature52(saved_manifest, run_signature)) {
-      message(
+      if (is.null(bar)) message(
         "Simulation large52 deja terminee : ",
         output
       )
+      if (!is.null(bar)) bar$update(1, "Already complete")
 
       return(
         invisible(
@@ -2373,6 +2398,21 @@ bs52_run_large_production52 <- function(scenario) {
 
   simulation_start <- proc.time()[["elapsed"]]
 
+  report_progress <- NULL
+  if (!is.null(bar)) {
+    step_count <- scenario$duration / scenario$timestep
+    total_phases <- 3 * step_count + 2
+    report_progress <- function(end_year, fraction, label) {
+      completed <- 1 + 3 * (end_year / scenario$timestep - 1 + fraction)
+      bar$update(completed / total_phases, paste0("Year ", end_year, " | ", label))
+    }
+    if (is.null(resume_checkpoint)) {
+      bar$update(1 / total_phases, "Preparing initial state")
+    } else {
+      completed <- 1 + 3 * resume_checkpoint$year / scenario$timestep
+      bar$update(completed / total_phases, paste("Resuming from year", resume_checkpoint$year))
+    }
+  }
   result <- bs52_run_large_landscape52(
     ctx = ctx,
     duration = scenario$duration,
@@ -2394,13 +2434,16 @@ bs52_run_large_production52 <- function(scenario) {
     snapshot_compression =
       scenario$snapshot_compression,
     checkpoint_compression =
-      scenario$checkpoint_compression
+      scenario$checkpoint_compression,
+    report_progress = report_progress,
+    detailed_progress = detailed_progress
   )
 
   simulation_seconds <- bs52_large_elapsed(
     simulation_start
   )
 
+  if (!is.null(bar)) bar$update((total_phases - 1) / total_phases, "Writing outputs")
   snapshot_files <- list.files(
     file.path(output, "snapshots"),
     pattern = "^snapshot_[0-9]+\\.rds$",
@@ -2499,6 +2542,11 @@ bs52_run_large_production52 <- function(scenario) {
     compress = "gzip",
     overwrite = FALSE
   )
+
+  if (!is.null(bar)) {
+    bar$update(1, paste("Complete at year", scenario$duration))
+    bar$close()
+  }
 
   message("")
   message("============================================================")

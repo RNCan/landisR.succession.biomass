@@ -7,6 +7,11 @@ Provides the engine used by biomass projects. Use \code{landisR::landis_build()}
 \code{landisR::landis_sim()}, or \code{landisR::landis_run()} to run the model.
 }
 \details{
+Use the progress argument of \code{landisR::landis_sim()},
+\code{landisR::landis_step()}, or \code{landisR::landis_run()} to control the
+console display. In a production run using \code{landis_run()}, enabling
+\code{landisR52.progress} selects detailed native progress instead.
+
 The provider exposes its fire response through \code{fire$capture_sources}
 and \code{fire$recruit}. The first callback is called before the core
 applies cohort mortality. It receives the current simulation and affected

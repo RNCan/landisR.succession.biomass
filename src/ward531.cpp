@@ -1,5 +1,6 @@
 #include <Rcpp.h>
 #include <landisR/mt19937.hpp>
+#include <landisR/progress.hpp>
 #include <landisR/array_sort.hpp>
 #include <algorithm>
 #include <cstdint>
@@ -59,6 +60,8 @@ List bs52_ward531_draw_cpp(LogicalMatrix mature, IntegerVector cell_state,
       site_order.size() != n_sites)
     stop("Invalid Ward 5.3.1 input dimensions");
 
+  landis_progress::Reporter progress;
+  progress.phase(0, "Preparing Ward neighborhoods");
   landis_rng::Stream rng(0);
   rng.restore(rng_state);
   rng.draws = landis_rng::Stream::offset(rng_offset);
@@ -112,7 +115,9 @@ List bs52_ward531_draw_cpp(LogicalMatrix mature, IntegerVector cell_state,
       flags[cell - 1] |= 1u << (sp - 1);
     }
   }
+  progress.start(0.14, 1, "Ward dispersal & recruitment", n_sites);
   for (int order = 0; order < n_sites; ++order) {
+    progress.advance(order);
     if ((order & 16383) == 0) checkUserInterrupt();
     const int cell = site_order[order] - 1;
     if (mask[cell] == -1) {

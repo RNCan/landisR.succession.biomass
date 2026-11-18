@@ -1,15 +1,15 @@
 Package: landisR.succession.biomass
 Type: Package
 Title: LANDIS Living Biomass Succession for landisR
-Version: 0.1.0.9004
+Version: 0.1.0.9006
 Authors@R: person("Yan", "Boulanger", email = "landisR-maintainer@example.invalid", role = c("aut", "cre"))
 Description: Provides living biomass growth, mortality, Ward dispersal, recruitment, initial communities and post-fire regeneration for landisR. Includes LANDIS-II
                   input adapters and the production simulation engine.
 License: file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.3.0)
-Imports: landisR (>= 0.1.0.9012), Rcpp
-LinkingTo: landisR, Rcpp
+Imports: landisR (>= 0.1.0.9015), Rcpp
+LinkingTo: landisR (>= 0.1.0.9015), Rcpp
 Suggests: terra, testthat (>= 3.0.0)
 Config/testthat/edition: 3
 NeedsCompilation: yes

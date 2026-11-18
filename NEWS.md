@@ -1,3 +1,8 @@
+# landisR.succession.biomass 0.1.0.9005
+
+- Report growth, regeneration and output writing in the console progress bar
+  for `landisR::landis_run()`.
+
 # landisR.succession.biomass 0.1.0.9004
 
 - Index explicit initial cohorts by MapCode and reuse their ordered groups.
