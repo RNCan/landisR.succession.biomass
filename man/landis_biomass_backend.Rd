@@ -27,3 +27,9 @@ advance biomass projects, process fire-driven recruitment, and run
 production simulations.
 }
 \keyword{internal}
+
+\examples{
+backend <- landis_biomass_backend()
+names(backend)
+names(backend$fire)
+}
