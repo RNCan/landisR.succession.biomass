@@ -44,3 +44,17 @@ bs52_initialize_explicit <- function(initial, map_code) {
   rownames(out) <- NULL
   out
 }
+
+# Resolve MapCodes once. State order follows the landscape encounter order,
+# while cohort order within each state follows the initial table.
+bs52_initialize_explicit_states <- function(initial, state_community) {
+  codes <- unique(state_community)
+  cohorts <- initial$cohorts
+  groups <- factor(match(cohorts$map_code, codes), levels = seq_along(codes))
+  states <- split(cohorts[c("species", "age", "biomass")], groups)
+  states <- lapply(unname(states), function(state) {
+    rownames(state) <- NULL
+    state
+  })
+  states[match(state_community, codes)]
+}

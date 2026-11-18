@@ -1,6 +1,9 @@
 # Apply the scientific timestep to the shared forest. The core advances the clock.
 biomass_step <- function(simulation, end_year) {
   timestep <- as.integer(simulation$project$canonical$timestep)
+  deferred <- landisR::landis_deferred_regeneration(simulation)
+  if (deferred && is.null(simulation$ctx$ward_v7_groups))
+    simulation$ctx$ward_v7_groups <- bs52_ward531_groups(simulation$ctx$config, native_order = TRUE)
 
   checkpoint <-
     .biomass_core$services$checkpoint(
@@ -52,9 +55,12 @@ biomass_step <- function(simulation, end_year) {
       checkpoint_compression =
         "gzip1",
       establishment = simulation$establishment,
-      landis_rng = simulation$landis_rng
+      landis_rng = simulation$landis_rng,
+      deferred = deferred,
+      pending_regeneration = simulation$pending_regeneration
     )
 
+  if (deferred) simulation$pending_regeneration <- NULL
   if (!is.null(simulation$establishment$planting)) {
     simulation$establishment$planting <- NULL
     if (!length(simulation$establishment$excluded_cells))

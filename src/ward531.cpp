@@ -1,7 +1,9 @@
 #include <Rcpp.h>
 #include <landisR/mt19937.hpp>
+#include <landisR/array_sort.hpp>
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <vector>
 
 using namespace Rcpp;
@@ -28,13 +30,25 @@ bool is_mature(const LogicalMatrix& mature, const IntegerVector& cell_state,
 } // namespace
 
 // [[Rcpp::export(rng = false)]]
+IntegerVector bs52_v7_distance_order_cpp(const NumericVector& distance) {
+  IntegerVector order(distance.size());
+  std::iota(order.begin(), order.end(), 1);
+  landis_array_sort::landis_sort(order.begin(), order.size(), [&](int a, int b) {
+    return distance[a - 1] < distance[b - 1];
+  });
+  return order;
+}
+
+// [[Rcpp::export(rng = false)]]
 List bs52_ward531_draw_cpp(LogicalMatrix mature, IntegerVector cell_state,
                           IntegerVector state_eco, IntegerVector shade_class,
                           IntegerMatrix targets, int nrow, int ncol,
                           IntegerVector positions, IntegerVector site_order,
                           NumericMatrix sep, NumericMatrix light, IntegerVector tolerance,
                           List groups, LogicalVector strict, IntegerVector mask,
-                          IntegerVector excluded, std::string rng_state, double rng_offset) {
+                          IntegerVector excluded, std::string rng_state, double rng_offset,
+                          bool deferred, IntegerVector pending_cell, IntegerVector pending_species,
+                          LogicalVector pending_serotiny, NumericVector vegetative_probability) {
   const int n_sites = cell_state.size(), n_species = mature.ncol();
   if (n_species < 1 || n_species > 30 || mask.size() != n_sites ||
       targets.nrow() != n_sites || targets.ncol() != 2 ||
@@ -83,6 +97,21 @@ List bs52_ward531_draw_cpp(LogicalMatrix mature, IntegerVector cell_state,
     }
   }
 
+  std::vector<unsigned int> serotiny(deferred ? n_sites : 0, 0);
+  std::vector<unsigned int> resprout(deferred ? n_sites : 0, 0);
+  if (deferred) {
+    if (pending_cell.size() != pending_species.size() || pending_cell.size() != pending_serotiny.size() ||
+        vegetative_probability.size() != n_species)
+      stop("Invalid pending regeneration dimensions");
+    for (R_xlen_t i = 0; i < pending_cell.size(); ++i) {
+      const int cell = pending_cell[i], sp = pending_species[i];
+      if (cell < 1 || cell > n_sites || sp < 1 || sp > n_species ||
+          pending_serotiny[i] == NA_LOGICAL)
+        stop("Invalid pending regeneration signal");
+      auto& flags = pending_serotiny[i] ? serotiny : resprout;
+      flags[cell - 1] |= 1u << (sp - 1);
+    }
+  }
   for (int order = 0; order < n_sites; ++order) {
     if ((order & 16383) == 0) checkUserInterrupt();
     const int cell = site_order[order] - 1;
@@ -94,6 +123,22 @@ List bs52_ward531_draw_cpp(LogicalMatrix mature, IntegerVector cell_state,
     const int state = cell_state[cell] - 1;
     const int eco = state_eco[state] - 1, shade = shade_class[state];
     const int row = targets(cell, 0) - 1, col = targets(cell, 1) - 1;
+    if (deferred && (serotiny[cell] || resprout[cell])) {
+      for (int sp = 0; sp < n_species; ++sp) {
+        if (!(serotiny[cell] & (1u << sp))) continue;
+        if (rng.next_double() >= light(tolerance[sp] - 1, shade)) continue;
+        if (rng.next_double() < sep(eco, sp)) mask[cell] |= 1 << sp;
+      }
+      if (mask[cell] == 0) {
+        for (int sp = 0; sp < n_species; ++sp) {
+          if (!(resprout[cell] & (1u << sp))) continue;
+          if (rng.next_double() >= light(tolerance[sp] - 1, shade)) continue;
+          const double probability = static_cast<float>(vegetative_probability[sp]);
+          if (rng.next_double() < probability) mask[cell] |= 1 << sp;
+        }
+      }
+      if (mask[cell] != 0) continue;
+    }
     for (int sp = 0; sp < n_species; ++sp) {
       if (rng.next_double() >= light(tolerance[sp] - 1, shade)) continue;
       if (rng.next_double() >= sep(eco, sp) || strict[sp]) continue;

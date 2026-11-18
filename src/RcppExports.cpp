@@ -463,9 +463,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// bs52_v7_distance_order_cpp
+IntegerVector bs52_v7_distance_order_cpp(const NumericVector& distance);
+RcppExport SEXP _landisR_succession_biomass_bs52_v7_distance_order_cpp(SEXP distanceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type distance(distanceSEXP);
+    rcpp_result_gen = Rcpp::wrap(bs52_v7_distance_order_cpp(distance));
+    return rcpp_result_gen;
+END_RCPP
+}
 // bs52_ward531_draw_cpp
-List bs52_ward531_draw_cpp(LogicalMatrix mature, IntegerVector cell_state, IntegerVector state_eco, IntegerVector shade_class, IntegerMatrix targets, int nrow, int ncol, IntegerVector positions, IntegerVector site_order, NumericMatrix sep, NumericMatrix light, IntegerVector tolerance, List groups, LogicalVector strict, IntegerVector mask, IntegerVector excluded, std::string rng_state, double rng_offset);
-RcppExport SEXP _landisR_succession_biomass_bs52_ward531_draw_cpp(SEXP matureSEXP, SEXP cell_stateSEXP, SEXP state_ecoSEXP, SEXP shade_classSEXP, SEXP targetsSEXP, SEXP nrowSEXP, SEXP ncolSEXP, SEXP positionsSEXP, SEXP site_orderSEXP, SEXP sepSEXP, SEXP lightSEXP, SEXP toleranceSEXP, SEXP groupsSEXP, SEXP strictSEXP, SEXP maskSEXP, SEXP excludedSEXP, SEXP rng_stateSEXP, SEXP rng_offsetSEXP) {
+List bs52_ward531_draw_cpp(LogicalMatrix mature, IntegerVector cell_state, IntegerVector state_eco, IntegerVector shade_class, IntegerMatrix targets, int nrow, int ncol, IntegerVector positions, IntegerVector site_order, NumericMatrix sep, NumericMatrix light, IntegerVector tolerance, List groups, LogicalVector strict, IntegerVector mask, IntegerVector excluded, std::string rng_state, double rng_offset, bool deferred, IntegerVector pending_cell, IntegerVector pending_species, LogicalVector pending_serotiny, NumericVector vegetative_probability);
+RcppExport SEXP _landisR_succession_biomass_bs52_ward531_draw_cpp(SEXP matureSEXP, SEXP cell_stateSEXP, SEXP state_ecoSEXP, SEXP shade_classSEXP, SEXP targetsSEXP, SEXP nrowSEXP, SEXP ncolSEXP, SEXP positionsSEXP, SEXP site_orderSEXP, SEXP sepSEXP, SEXP lightSEXP, SEXP toleranceSEXP, SEXP groupsSEXP, SEXP strictSEXP, SEXP maskSEXP, SEXP excludedSEXP, SEXP rng_stateSEXP, SEXP rng_offsetSEXP, SEXP deferredSEXP, SEXP pending_cellSEXP, SEXP pending_speciesSEXP, SEXP pending_serotinySEXP, SEXP vegetative_probabilitySEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::traits::input_parameter< LogicalMatrix >::type mature(matureSEXP);
@@ -486,7 +496,12 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< IntegerVector >::type excluded(excludedSEXP);
     Rcpp::traits::input_parameter< std::string >::type rng_state(rng_stateSEXP);
     Rcpp::traits::input_parameter< double >::type rng_offset(rng_offsetSEXP);
-    rcpp_result_gen = Rcpp::wrap(bs52_ward531_draw_cpp(mature, cell_state, state_eco, shade_class, targets, nrow, ncol, positions, site_order, sep, light, tolerance, groups, strict, mask, excluded, rng_state, rng_offset));
+    Rcpp::traits::input_parameter< bool >::type deferred(deferredSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type pending_cell(pending_cellSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type pending_species(pending_speciesSEXP);
+    Rcpp::traits::input_parameter< LogicalVector >::type pending_serotiny(pending_serotinySEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type vegetative_probability(vegetative_probabilitySEXP);
+    rcpp_result_gen = Rcpp::wrap(bs52_ward531_draw_cpp(mature, cell_state, state_eco, shade_class, targets, nrow, ncol, positions, site_order, sep, light, tolerance, groups, strict, mask, excluded, rng_state, rng_offset, deferred, pending_cell, pending_species, pending_serotiny, vegetative_probability));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -516,7 +531,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_landisR_succession_biomass_bs52_ward_probability_fused_bitset_cpp", (DL_FUNC) &_landisR_succession_biomass_bs52_ward_probability_fused_bitset_cpp, 14},
     {"_landisR_succession_biomass_bs52_ward_probability_fused_bitset_v38_reference_cpp", (DL_FUNC) &_landisR_succession_biomass_bs52_ward_probability_fused_bitset_v38_reference_cpp, 14},
     {"_landisR_succession_biomass_bs52_ward_probability_fused_bitset_v310_reference_cpp", (DL_FUNC) &_landisR_succession_biomass_bs52_ward_probability_fused_bitset_v310_reference_cpp, 14},
-    {"_landisR_succession_biomass_bs52_ward531_draw_cpp", (DL_FUNC) &_landisR_succession_biomass_bs52_ward531_draw_cpp, 18},
+    {"_landisR_succession_biomass_bs52_v7_distance_order_cpp", (DL_FUNC) &_landisR_succession_biomass_bs52_v7_distance_order_cpp, 1},
+    {"_landisR_succession_biomass_bs52_ward531_draw_cpp", (DL_FUNC) &_landisR_succession_biomass_bs52_ward531_draw_cpp, 23},
     {NULL, NULL, 0}
 };
 

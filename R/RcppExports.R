@@ -97,7 +97,11 @@ bs52_ward_probability_fused_bitset_v310_reference_cpp <- function(state_mature, 
     .Call(`_landisR_succession_biomass_bs52_ward_probability_fused_bitset_v310_reference_cpp`, state_mature, cell_state, targets, nr, nc, neighbor_row, neighbor_col, log_failure, omnidisperse, base_probability, local_only, ward2019, show_progress, progress_label)
 }
 
-bs52_ward531_draw_cpp <- function(mature, cell_state, state_eco, shade_class, targets, nrow, ncol, positions, site_order, sep, light, tolerance, groups, strict, mask, excluded, rng_state, rng_offset) {
-    .Call(`_landisR_succession_biomass_bs52_ward531_draw_cpp`, mature, cell_state, state_eco, shade_class, targets, nrow, ncol, positions, site_order, sep, light, tolerance, groups, strict, mask, excluded, rng_state, rng_offset)
+bs52_v7_distance_order_cpp <- function(distance) {
+    .Call(`_landisR_succession_biomass_bs52_v7_distance_order_cpp`, distance)
+}
+
+bs52_ward531_draw_cpp <- function(mature, cell_state, state_eco, shade_class, targets, nrow, ncol, positions, site_order, sep, light, tolerance, groups, strict, mask, excluded, rng_state, rng_offset, deferred, pending_cell, pending_species, pending_serotiny, vegetative_probability) {
+    .Call(`_landisR_succession_biomass_bs52_ward531_draw_cpp`, mature, cell_state, state_eco, shade_class, targets, nrow, ncol, positions, site_order, sep, light, tolerance, groups, strict, mask, excluded, rng_state, rng_offset, deferred, pending_cell, pending_species, pending_serotiny, vegetative_probability)
 }
 

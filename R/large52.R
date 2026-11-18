@@ -83,112 +83,68 @@ bs52_large_input_signature52 <- function(root) {
   )
 }
 
-bs52_large_read_canonical_cached52 <- function(
-    inputs,
-    cache_file = NULL) {
+bs52_large_read_canonical_cached52 <- function(inputs, cache_file = NULL) {
+  inputs <- normalizePath(inputs, winslash = "/", mustWork = TRUE)
+  if (is.null(cache_file)) return(bs52_read_canonical52(inputs))
 
-  inputs <-
-    normalizePath(
-      inputs,
-      winslash = "/",
-      mustWork = TRUE
-    )
+  if (!is.character(cache_file) || length(cache_file) != 1L ||
+      is.na(cache_file) || !nzchar(cache_file))
+    bs52_large_stop("Le chemin du cache canonique doit etre une chaine non vide.")
 
-  if (is.null(
-        cache_file
-      )) {
-    return(
-      bs52_read_canonical52(
-        inputs
-      )
-    )
-  }
-
-  cache_file <-
-    normalizePath(
-      cache_file,
-      winslash = "/",
-      mustWork = FALSE
-    )
-
-  signature <-
-    bs52_large_input_signature52(
-      inputs
-    )
-
-  if (file.exists(
-        cache_file
-      )) {
-
-    cache <-
-      readRDS(
-        cache_file
-      )
-
-    if (is.list(
-          cache
-        ) &&
-        identical(
-          cache$format,
-          "landisR52/canonical-cache-v1"
-        ) &&
-        identical(
-          cache$source,
-          inputs
-        ) &&
-        identical(
-          cache$signature,
-          signature
-        ) &&
-        is.list(
-          cache$canonical
-        )) {
-
-      message(
-        "Cache canonique reutilise : ",
-        cache_file
-      )
-
-      return(
-        cache$canonical
-      )
-    }
-
-    message(
-      "Cache canonique obsolete; reconstruction."
-    )
-  }
-
-  message(
-    "Lecture CSV canonique et creation du cache binaire..."
+  cache_file <- path.expand(cache_file)
+  cache_file <- file.path(
+    normalizePath(dirname(cache_file), winslash = "/", mustWork = FALSE),
+    basename(cache_file)
   )
+  if (dir.exists(cache_file))
+    bs52_large_stop("Le cache canonique doit etre un fichier : ", cache_file)
 
-  canonical <-
-    bs52_read_canonical52(
-      inputs
-    )
+  input_signature <- function() {
+    files <- sort(list.files(inputs, pattern = "[.]csv$", ignore.case = TRUE,
+                             recursive = TRUE, full.names = TRUE), method = "radix")
+    paths <- normalizePath(files, winslash = "/", mustWork = TRUE)
+    target <- normalizePath(cache_file, winslash = "/", mustWork = FALSE)
+    if (.Platform$OS.type == "windows") {
+      paths <- tolower(paths)
+      target <- tolower(target)
+    }
+    if (target %in% paths)
+      bs52_large_stop("Le cache canonique ne peut pas remplacer un CSV d'entree.")
+    checksums <- unname(tools::md5sum(files))
+    if (anyNA(checksums))
+      bs52_large_stop("Impossible de lire les CSV pour verifier le cache canonique.")
+    setNames(checksums, substring(files, nchar(inputs) + 2L))
+  }
+
+  signature <- input_signature()
+  format <- "landisR52/canonical-cache-v2"
+  reader_version <- as.character(getNamespaceVersion("landisR.succession.biomass"))
+
+  if (file.exists(cache_file)) {
+    cache <- tryCatch(readRDS(cache_file), error = function(e) NULL,
+                      warning = function(w) NULL)
+    if (is.list(cache) && identical(cache$format, format) &&
+        identical(cache$source, inputs) &&
+        identical(cache$reader_version, reader_version) &&
+        identical(cache$signature, signature) && is.list(cache$canonical)) {
+      message("Cache canonique reutilise : ", cache_file)
+      return(cache$canonical)
+    }
+    rm(cache)
+  }
+
+  message("Lecture CSV canonique et creation du cache binaire...")
+  canonical <- bs52_read_canonical52(inputs)
+  if (!identical(signature, input_signature()))
+    bs52_large_stop("Les CSV canoniques ont change pendant la lecture. Relancer l'import.")
 
   .biomass_core$services$write_rds(
-    list(
-      format =
-        "landisR52/canonical-cache-v1",
-      source =
-        inputs,
-      signature =
-        signature,
-      canonical =
-        canonical
-    ),
-    cache_file,
-    compress = "none",
-    overwrite = TRUE
+    list(format = format, source = inputs, reader_version = reader_version,
+         signature = signature, canonical = canonical),
+    cache_file, compress = "none", overwrite = TRUE
   )
 
-  message(
-    "Cache canonique cree : ",
-    cache_file
-  )
-
+  message("Cache canonique cree : ", cache_file)
   canonical
 }
 
@@ -723,23 +679,14 @@ bs52_large_context52 <- function(canonical) {
   state_eco <- active_eco[first]
   state_community <- active_community[first]
 
-  states <- vector("list", length(unique_key))
-
-  for (s in seq_along(states)) {
-    if (!is.null(config$explicit_initial)) {
-      states[[s]] <- bs52_initialize_explicit(
-        config$explicit_initial,
-        state_community[s]
-      )
-    } else {
-      states[[s]] <- bs52_spinup_live(
-        config,
-        state_community[s],
-        state_eco[s]
-      )
-    }
-
-    rownames(states[[s]]) <- NULL
+  states <- if (!is.null(config$explicit_initial)) {
+    bs52_initialize_explicit_states(config$explicit_initial, state_community)
+  } else {
+    lapply(seq_along(state_community), function(s) {
+      state <- bs52_spinup_live(config, state_community[s], state_eco[s])
+      rownames(state) <- NULL
+      state
+    })
   }
 
   bs52_large_init_bulk52()
@@ -1329,7 +1276,8 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
                                  precomputed_features = NULL,
                                  precomputed_ecology = NULL,
                                  establishment = NULL,
-                                 landis_rng = NULL) {
+                                 landis_rng = NULL,
+                                 deferred = FALSE, pending_regeneration = NULL) {
   variant <- match.arg(variant)
   mode <- match.arg(mode)
 
@@ -1421,7 +1369,7 @@ bs52_large_recruit52 <- function(states, state_eco, cell_state,
     rm(probability)
   } else {
     draw <- bs52_ward531_recruit(features, ecology, ctx, cell_state, state_eco,
-                                establishment, landis_rng)
+                                establishment, landis_rng, deferred, pending_regeneration)
     recruit_mask <- draw$mask
     landis_rng <- list(state = draw$rng_state, offset = draw$rng_offset)
     ward_seconds <- bs52_large_elapsed(ward_start)
@@ -1632,7 +1580,8 @@ bs52_run_large_landscape52 <- function(
       "none"
     ),
     establishment = NULL,
-    landis_rng = NULL) {
+    landis_rng = NULL,
+    deferred = FALSE, pending_regeneration = NULL) {
 
   engine <- match.arg(engine)
   dispersal <- match.arg(dispersal)
@@ -1929,9 +1878,12 @@ bs52_run_large_landscape52 <- function(
       precomputed_features = growth_bundle$features,
       precomputed_ecology = growth_bundle$ecology,
       establishment = establishment,
-      landis_rng = landis_rng
+      landis_rng = landis_rng,
+      deferred = deferred,
+      pending_regeneration = pending_regeneration
     )
 
+    pending_regeneration <- NULL
     landis_rng <- recruited$landis_rng
     states <- recruited$states
     state_eco <- recruited$state_eco

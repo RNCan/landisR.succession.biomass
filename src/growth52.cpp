@@ -4442,6 +4442,8 @@ List bs52_rebuild_csr_cpp(
     )
   );
 
+  std::vector<int> last_cohort(static_cast<std::size_t>(n_species));
+
   for (int u = 0;
        u < n_unique;
        ++u) {
@@ -4473,80 +4475,47 @@ List bs52_rebuild_csr_cpp(
     const int end =
       offset[old_state + 1];
 
-    for (int k = begin;
-         k < end;
-         ++k) {
-
-      out_species[cursor] =
-        input_species[k];
-
-      out_age[cursor] =
-        input_age[k];
-
-      out_biomass[cursor] =
-        input_biomass[k];
-
+    unsigned int remaining = static_cast<unsigned int>(mask);
+    const auto add_recruit = [&](int species) {
+      const double anpp = max_anpp_by_eco(eco, species);
+      const double candidate = anpp * std::exp(
+        -1.6 * establishment_biomass[old_state] / eco_max_by_eco[eco]
+      );
+      out_species[cursor] = species;
+      out_age[cursor] = 1.0;
+      out_biomass[cursor] = std::trunc(std::max(2.0, std::min(anpp, candidate)));
       ++cursor;
+    };
+
+    // LANDIS-II keeps an existing species in its original group when it
+    // recruits. Disturbance can later leave only recruits of the same age,
+    // so their encounter order also governs their competition during growth.
+    if (remaining != 0u) {
+      std::fill(last_cohort.begin(), last_cohort.end(), -1);
+      for (int k = begin; k < end; ++k)
+        last_cohort[input_species[k]] = k;
     }
 
-    if (mask != 0) {
-      const double site_biomass =
-        establishment_biomass[
-          old_state
-        ];
+    for (int k = begin; k < end; ++k) {
+      const int species = input_species[k];
+      out_species[cursor] = species;
+      out_age[cursor] = input_age[k];
+      out_biomass[cursor] = input_biomass[k];
+      ++cursor;
 
-      const double eco_max =
-        eco_max_by_eco[
-          eco
-        ];
+      const unsigned int bit = 1u << species;
+      if ((remaining & bit) != 0u && last_cohort[species] == k) {
+        add_recruit(species);
+        remaining &= ~bit;
+      }
+    }
 
-      for (int j = 0;
-           j < n_species;
-           ++j) {
-
-        if (
-          (
-            static_cast<unsigned int>(
-              mask
-            ) &
-            (1u << j)
-          ) == 0u
-        ) {
-          continue;
-        }
-
-        const double anpp =
-          max_anpp_by_eco(
-            eco,
-            j
-          );
-
-        const double candidate =
-          anpp *
-          std::exp(
-            -1.6 *
-            site_biomass /
-            eco_max
-          );
-
-        out_species[cursor] =
-          j;
-
-        out_age[cursor] =
-          1.0;
-
-        out_biomass[cursor] =
-          std::trunc(
-            std::max(
-              2.0,
-              std::min(
-                anpp,
-                candidate
-              )
-            )
-          );
-
-        ++cursor;
+    // New species join the site in establishment order.
+    for (int species = 0; remaining != 0u && species < n_species; ++species) {
+      const unsigned int bit = 1u << species;
+      if ((remaining & bit) != 0u) {
+        add_recruit(species);
+        remaining &= ~bit;
       }
     }
 
